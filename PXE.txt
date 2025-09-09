@@ -1,0 +1,146 @@
+#!ipxe
+
+#
+# Ubuntu Installer
+#
+
+#
+# The $seed_url is used by cloud-init's nocloud-net provider to find the user-data and meta-data files. The trailing slash is important, the cloud-init process sticks 'meta-data' or 'user-data' right after, without prepending a forward slash to the file name.
+set seed_url https://zcgcil9001arpy01ipr001.dcu.cip.att.com/Arcadian/sane/ASTTX/DCU2.0/configs/pserver/pserver_tenant/ASTTXc001/
+
+#
+# The $vmlinuz_url and $initrd_url, the files can be found on the iso contents
+set vmlinuz_url https://zcgcil9001arpy01ipr001.dcu.cip.att.com/ubuntu22/casper/vmlinuz
+set initrd_url https://zcgcil9001arpy01ipr001.dcu.cip.att.com/ubuntu22/casper/initrd
+
+#
+# The $iso_url points to the live-server iso file
+set iso_url https://zcgcil9001arpy01ipr001.dcu.cip.att.com/ubuntu22043.iso
+
+# Single line
+kernel ${vmlinuz_url} console=ttyS1 console=tty1,115200n8 autoinstall url=${iso_url} ip=32.111.112.182::32.111.112.177:255.255.255.240:ASTTXc001:eno8303::135.21.13.15: ds=nocloud-net;s=${seed_url}
+initrd ${initrd_url}
+boot ||
+
+# If everything failed, give the user some options
+echo Boot from ${base-url} failed
+prompt --key 0x197e --timeout 2000 Press F12 to investigate || exit
+shell
+
+
+
+#################################################################################################################
+
+
+Now iPXE file
+
+#!ipxe
+
+#
+# Author: Nanda Hullahalli
+# Date:   03/15/2021
+# Version: 1.0
+#
+# Intelligently scans all the available NIC interfaces on host boot initiated via Arcadian portal
+# Checks the network interfaces, if it is up, configures the interfaces one at  time, pings the gateway for connectivity.
+# If it fails, removes the configuration on the NIC port, and moves on till it finds the right interface for PXE.
+#
+#
+set timeout 50000
+set net0/hostname ASTTXc001
+
+:menu
+menu Network boot options for ${hostname}
+item --key a default Boot (a)ll network adapters in turn
+item
+item --gap -- --- Detected network adapters ---
+set i:int8 0
+:loop
+ifopen net${i} && item --key ${i} net${i} net(${i}): ${netX/mac} - ${netX/bustype} ${netX/busloc:busdevfn} ${pci/${netX/busloc}.0.2}:${pci/${netX/busloc}.2.2} ${netX/chip} ; ifclose
+inc i
+iseq ${i} 10 || goto loop
+item
+item --gap -- --- Alternatives ---
+item --key c config Open (c)onfiguration
+item --key r reboot (R)eboot computer
+item --key s shell Drop to iPXE (s)hell
+item --key x exit  E(x)it and continue BIOS boot order
+choose --timeout ${timeout} selected && goto select || goto default
+goto menu
+
+:select
+goto label
+
+:label
+goto ${selected} ||
+echo The label '${selected}' could not be found, returning to menu...
+sleep 2
+goto restart
+
+:config
+config
+goto restart
+
+:shell
+shell
+goto restart
+
+:restart
+set timeout 0
+goto menu
+
+:reboot
+reboot
+
+:exit
+echo Continuing BIOS boot order...
+sleep 1
+exit
+
+:default
+set i:int8 0
+
+:default_loop
+echo "###################################################"
+echo "   Verifying network adapter net${i} for PXE...    "
+echo "###################################################"
+colour --basic 1 6
+cpair --foreground 7 0
+ifopen net${i}
+
+set net${i}/ip 32.111.112.182
+set net${i}/netmask 255.255.255.240
+set net${i}/gateway 32.111.112.177
+set net${i}/hostname ASTTXc001
+set net${i}/dns 135.21.13.15
+echo net${i} ${net${i}/hostname}
+echo net${i} ${net${i}/ip}
+echo net${i} ${net${i}/netmask}
+echo net${i} ${net${i}/gateway}
+
+sleep 45
+ping --count 10 ${net${i}/gateway}  && goto gateway_good || goto gateway_bad
+:next
+inc i
+iseq ${i} 11 || goto default_loop
+goto shell
+
+:gateway_good
+echo "###################################################"
+echo "  Found the right network adapter net${-i} PXE... "
+echo "###################################################"
+echo gateway_good for net${i}
+ifstat net${i}
+route
+chain https://zcgcil9001arpy01ipr001.dcu.cip.att.com/Arcadian/sane/ASTTX/DCU2.0/configs/pserver/pserver_tenant/ASTTXc001/ASTTXc001.pxe
+prompt --key 0x02 --timeout 2000 Press Ctrl-B for the iPXE command line... && shell ||
+goto next
+
+:gateway_bad
+#echo gateway_bad
+echo
+echo  This is not the correct network adapter net${i}...
+echo  Removing the temporarily configured information...
+echo
+ifclose net${i}
+goto next
