@@ -1,0 +1,108 @@
+Sample netplan file for  a VM
+
+
+network:
+    ethernets:
+        enp1s0:
+            dhcp4: false
+            addresses: [135.25.96.235/24]
+            gateway4: 135.25.96.1
+            nameservers:
+               addresses: [135.21.13.15]
+    version: 2
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+Sample netplan file for  a Host
+	
+	
+	
+	# network: {config: disabled}
+network:
+    version: 2
+    renderer: networkd
+#Defining network interfaces to use
+    ethernets:
+        eno8303:
+          addresses:
+            - 32.40.216.185/28
+        enp55s0f0np0:
+          dhcp4: no
+          dhcp6: no
+        enp55s0f1np1:
+          dhcp4: no
+          dhcp6: no
+        enp139s0f0np0:
+          dhcp4: no
+          dhcp6: no
+        enp139s0f1np1:
+          dhcp4: no
+          dhcp6: no
+#Creating bond
+    bonds:
+        bond0:
+          dhcp4: no
+          interfaces:
+              - enp55s0f0np0
+              - enp55s0f1np1
+              - enp139s0f0np0
+              - enp139s0f1np1
+          mtu: 9100
+          parameters:
+               mode: active-backup
+               mii-monitor-interval: 100
+#Creating vlan interfaces bond0.11
+    vlans:
+      bond0.11:
+        id: 11
+        link: bond0
+        addresses: [32.40.217.105/27]
+        routes:
+          - to: 0.0.0.0/0
+            via: 32.40.217.98
+        nameservers:
+            addresses: [135.21.13.15,135.25.120.105]
+            search: [infra.dcu.cip.att.com]
+      bond0.29:
+        id: 29
+        link: bond0
+
+      bond0.85:
+        id: 85
+        link: bond0
+		
+	  bond0.33:
+        id: 33
+        link: bond0
+
+      bond0.34:
+        id: 34
+        link: bond0	
+		
+    bridges:
+      br29:
+        dhcp4: no
+        interfaces:
+          - bond0.29
+
+      br85:
+        dhcp4: no
+        interfaces:
+          - bond0.85
+		  
+	  br33:
+        dhcp4: no
+        interfaces:
+          - bond0.33
+		  
+	  br34:
+        dhcp4: no
+        interfaces:
+          - bond0.34
