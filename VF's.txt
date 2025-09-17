@@ -1,0 +1,288 @@
+What is SR-IOV?
+
+SR-IOV (Single Root I/O Virtualization) is a PCI Express (PCIe) standard that allows a single physical PCIe device, such as a network interface card (NIC), to expose multiple virtual devices:
+
+PF (Physical Function): The full-featured PCIe device, managed by the host.
+
+VF (Virtual Function): Lightweight virtual instances of the PF. These can be directly assigned to VMs or containers for near bare-metal I/O performance.
+
+Benefits of SR-IOV:
+
+Lower latency and CPU overhead compared to software-based networking (bridges, OVS).
+
+Higher throughput since VMs communicate directly with the NIC hardware.
+
+Hardware-level isolation for better security and performance.
+
+🔹 Steps to Enable SR-IOV on Ubuntu 22.04 Host
+1. Verify Hardware and BIOS Support
+
+Your NIC must support SR-IOV (e.g., Intel, Mellanox).
+
+Enable SR-IOV and VT-d (Intel) / AMD-Vi (AMD) in the BIOS/UEFI.
+
+2. Confirm IOMMU Support in the Kernel
+
+Edit GRUB configuration:
+
+sudo nano /etc/default/grub
+
+
+Update the GRUB_CMDLINE_LINUX_DEFAULT line:
+
+For Intel:
+
+GRUB_CMDLINE_LINUX_DEFAULT="intel_iommu=on iommu=pt"
+
+
+For AMD:
+
+GRUB_CMDLINE_LINUX_DEFAULT="amd_iommu=on iommu=pt"
+
+
+Then apply:
+
+sudo update-grub
+sudo reboot
+
+3. Check if NIC Supports SR-IOV
+
+Find your NIC:
+
+lspci | grep -i eth
+
+
+Check SR-IOV capability:
+
+sudo lspci -s <PCI-ID> -v
+
+
+Look for “Single Root I/O Virtualization (SR-IOV)” in the capabilities list.
+
+4. Enable Virtual Functions
+
+Identify your network device:
+
+ls /sys/class/net
+
+
+Suppose your NIC is ens3f0, create 4 VFs:
+
+echo 4 | sudo tee /sys/class/net/ens3f0/device/sriov_numvfs
+
+
+Verify:
+
+lspci | grep Virtual
+
+
+You should now see new Virtual Function devices.
+
+5. Persist Configuration Across Reboots
+
+Create a udev rule or systemd service. Example with udev:
+
+sudo nano /etc/udev/rules.d/70-sriov.rules
+
+
+Add:
+
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="ens3f0", ATTR{device/sriov_numvfs}="4"
+
+
+Reload rules:
+
+sudo udevadm control --reload
+
+🔹 Next Steps
+
+Once enabled, you can assign VFs to KVM VMs via libvirt XML (<hostdev> section).
+
+Ensure your VM OS has the right driver for the VF (e.g., ixgbevf for Intel).
+
+
+What are Virtual Functions (VFs) in KVM?
+
+Virtual Functions (VFs) come from SR-IOV (Single Root I/O Virtualization) technology, which allows a single physical PCIe device (like a NIC or HBA) to expose multiple lightweight PCIe functions.
+
+Physical Function (PF): The full-featured PCI device (managed by the host).
+
+Virtual Function (VF): A lightweight, stripped-down PCIe function created from the PF. VFs can be directly assigned to VMs for near bare-metal I/O performance.
+
+So, in KVM:
+
+A VF appears as a separate PCI device to the VM.
+
+The VM OS sees the VF as a “real” NIC/HBA but with limited management capability.
+
+The host controls the PF and can create/destroy/manage VFs.
+
+🔹 How to Attach a VF to a VM in KVM
+
+Enable SR-IOV on the PF (host side):
+
+echo 4 > /sys/class/net/eth0/device/sriov_numvfs
+
+
+This creates 4 VFs under the NIC eth0. You’ll see them as new interfaces: eth0vf0, eth0vf1, etc.
+
+Identify the VF PCI address:
+
+lspci | grep Ethernet
+
+
+Example output:
+
+3b:10.1 Ethernet controller: Intel Corporation Ethernet Controller Virtual Function
+
+
+Attach VF to VM via libvirt XML:
+Add the VF PCI device into the VM’s domain XML:
+
+<hostdev mode='subsystem' type='pci' managed='yes'>
+    <source>
+        <address domain='0x0000' bus='0x3b' slot='0x10' function='0x1'/>
+    </source>
+</hostdev>
+
+
+Then reload:
+
+virsh define vmname.xml
+virsh start vmname
+
+
+Or dynamically:
+
+virsh attach-device vmname vf-device.xml --persistent
+
+🔹 Advantages of Using a VF
+
+Near bare-metal performance	VF bypasses software switches (like Linux bridge or OVS), reducing CPU overhead and latency.
+Hardware acceleration	Leverages NIC’s hardware queues, checksum offload, SR-IOV features.
+Scalability	A single PF can present many VFs, each assigned to different VMs.
+Isolation	VFs are hardware-isolated, improving security between tenants/VMs.
+Lower CPU utilization	Packet processing is offloaded to NIC hardware instead of host kernel.
+
+✅ In short:
+Virtual Functions (VFs) are SR-IOV slices of a physical PCIe device that you can assign directly to KVM guests for high-performance, low-latency networking/storage. You attach them by enabling VFs on the host NIC, finding the PCI address, and passing it into the VM using libvirt.
+
+
+
+
+1. What are Virtual Functions (VFs)?
+
+Many modern NICs (Intel, Mellanox, Broadcom) support SR-IOV.
+
+SR-IOV splits a single physical function (PF) (the real NIC, e.g. ens3f0) into:
+
+PF (Physical Function): the main interface, managed by the hypervisor.
+
+VF (Virtual Function): lightweight PCIe functions that can be directly assigned to VMs.
+
+Think of VFs as virtual NICs created in hardware, not in software like virtio.
+
+🔹 2. Advantages of Virtual Functions on a Hypervisor
+
+Performance: Near bare-metal NIC performance (high throughput, low latency).
+
+Bypass Host Stack: Traffic skips the hypervisor software switch (Linux bridge/OVS).
+
+Scalability: Many VMs can share one PF but each gets a VF.
+
+Isolation: Each VF has its own MAC, queues, and can be managed independently.
+
+This is very common in NFV (telco), HPC, and low-latency trading environments.
+
+🔹 3. What Happens When You Add a VF to a VM?
+
+The VF appears in the VM as a dedicated PCI device (not a virtual NIC).
+
+Inside the VM, it looks like a normal NIC (eth0, ensX).
+
+The VM OS uses the NIC vendor driver (e.g. ixgbevf for Intel).
+
+The VM can transmit/receive packets directly with the NIC hardware, avoiding hypervisor overhead.
+
+🔹 4. How to Add a VLAN to a Virtual Function
+
+Each VF can be assigned a VLAN tag on the hypervisor side:
+
+# Syntax
+sudo ip link set <PF> vf <VF_number> vlan <VLAN_ID>
+
+
+Example: Assign VLAN 100 to VF 0 of PF ens3f0:
+
+sudo ip link set ens3f0 vf 0 vlan 100
+
+
+👉 After this, all traffic from VF 0 will be VLAN-tagged as 100 in hardware.
+
+You can also set other attributes:
+
+MAC address:
+
+sudo ip link set ens3f0 vf 0 mac 00:11:22:33:44:55
+
+
+Rate limit:
+
+sudo ip link set ens3f0 vf 0 max_tx_rate 1000
+
+🔹 5. How to Add a Virtual Function to a VM
+Step 1: Enable SR-IOV on PF
+
+Suppose your NIC is ens3f0:
+
+# Create 4 VFs on ens3f0
+echo 4 | sudo tee /sys/class/net/ens3f0/device/sriov_numvfs
+
+
+Verify:
+
+lspci | grep Eth
+
+
+You should see additional PCI devices (VFs).
+
+Step 2: Identify VF PCI Address
+lspci -nn | grep -i virtual
+
+
+Example output:
+
+03:10.0 Ethernet controller: Intel Corporation 82599 Virtual Function
+03:10.1 Ethernet controller: Intel Corporation 82599 Virtual Function
+
+Step 3: Attach VF to VM (libvirt)
+
+Edit the VM’s XML:
+
+<hostdev mode='subsystem' type='pci' managed='yes'>
+  <source>
+    <address domain='0x0000' bus='0x03' slot='0x10' function='0'/>
+  </source>
+</hostdev>
+
+
+Apply:
+
+virsh define <vmname>.xml
+virsh start <vmname>
+
+Step 4: Inside the VM
+
+Run ip link → you should see a new NIC.
+
+Assign IP or VLANs as needed.
+
+🔹 6. Summary
+
+VFs = hardware-backed virtual NICs from a PF (SR-IOV).
+
+Advantage: near bare-metal networking performance for VMs.
+
+VLANs: set on hypervisor with ip link set <PF> vf <X> vlan <Y>.
+
+Adding to VM: enable SR-IOV → find VF PCI ID → pass VF to VM with libvirt (PCI passthrough).
