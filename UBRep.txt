@@ -1,0 +1,11 @@
+Types: deb
+URIs: http://ubuntumirror.it.att.com/quarterly
+Suites: noble noble-updates
+Components: main
+Signed-By: /etc/apt/trusted.gpg.d/mirror_key.gpg
+
+Types: deb
+URIs: http://ubuntumirror.it.att.com/quarterly
+Suites: noble-security
+Components: main
+Signed-By: /etc/apt/trusted.gpg.d/mirror_key.gpg
