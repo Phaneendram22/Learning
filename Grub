@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# Purpose: Update or add hugepages parameter in /etc/default/grub
+# Usage:   sudo ./update_hugepages.sh
+#
+
+GRUB_FILE="/etc/default/grub"
+NEW_VALUE="hugepages=480"
+
+# Make a backup
+cp -p "$GRUB_FILE" "${GRUB_FILE}.bak_$(date +%F_%H%M%S)"
+
+echo "Updating hugepages setting in $GRUB_FILE ..."
+
+# If hugepages exists, replace it; otherwise append to GRUB_CMDLINE_LINUX
+if grep -q "hugepages=" "$GRUB_FILE"; then
+    sed -i "s/hugepages=[0-9]\+/$(echo $NEW_VALUE)/" "$GRUB_FILE"
+    echo "Replaced existing hugepages value with $NEW_VALUE."
+else
+    sed -i "s|\(GRUB_CMDLINE_LINUX=.*\)\"|\1 $NEW_VALUE\"|" "$GRUB_FILE"
+    echo "Added $NEW_VALUE to GRUB_CMDLINE_LINUX."
+fi
+
+# Verify
+grep hugepages "$GRUB_FILE"
+
+# Rebuild grub
+echo "Running update-grub..."
+update-grub
+
+echo "Done. Please reboot for changes to take effect."
