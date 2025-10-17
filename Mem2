@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# mem_breakdown_extended.sh — Summarize host memory usage (GiB) with breakdown of OS/daemons
+# Usage: sudo bash mem_breakdown_extended.sh
+
+set -euo pipefail
+kb_to_gib() { awk -v kb="${1:-0}" 'BEGIN{printf "%.2f", kb/1048576}'; }  # 1 GiB = 1048576 kB
+
+# Gather /proc/meminfo values
+declare -A M
+while read -r k v _; do M["${k%:}"]="$v"; done < /proc/meminfo
+
+MemTotal_kB=${M[MemTotal]:-0}
+MemFree_kB=${M[MemFree]:-0}
+Buffers_kB=${M[Buffers]:-0}
+Cached_kB=${M[Cached]:-0}
+Slab_kB=${M[Slab]:-0}
+SReclaimable_kB=${M[SReclaimable]:-0}
+SUnreclaim_kB=${M[SUnreclaim]:-0}
+HugePages_Total=${M[HugePages_Total]:-0}
+HugePages_Free=${M[HugePages_Free]:-0}
+Hugepagesize_kB=${M[Hugepagesize]:-2048}
+
+Huge_kB=$(( HugePages_Total * Hugepagesize_kB ))
+HugeFree_kB=$(( HugePages_Free * Hugepagesize_kB ))
+HugeUsed_kB=$(( Huge_kB - HugeFree_kB ))
+
+# Convert to GiB
+MemTotal_GiB=$(kb_to_gib "$MemTotal_kB")
+Huge_GiB=$(kb_to_gib "$Huge_kB")
+HugeUsed_GiB=$(kb_to_gib "$HugeUsed_kB")
+HugeFree_GiB=$(kb_to_gib "$HugeFree_kB")
+MemFree_GiB=$(kb_to_gib "$MemFree_kB")
+
+# Page cache + slabs
+PageCache_kB=$(( Buffers_kB + Cached_kB ))
+PageCache_GiB=$(kb_to_gib "$PageCache_kB")
+Slab_kB=$(( SReclaimable_kB + SUnreclaim_kB ))
+(( Slab_kB == 0 )) && Slab_kB=${M[Slab]:-0}
+Slab_GiB=$(kb_to_gib "$Slab_kB")
+
+# QEMU/libvirt processes
+QEMU_kB=$(ps -eo comm,rss --no-headers | awk '$1 ~ /^qemu-system/ {sum+=$2} END{print sum+0}')
+LIBVIRT_kB=$(ps -eo comm,rss --no-headers | awk '$1 ~ /^libvirtd$/ {sum+=$2} END{print sum+0}')
+QEMU_LIBVIRT_kB=$(( QEMU_kB + LIBVIRT_kB ))
+QEMU_LIBVIRT_GiB=$(kb_to_gib "$QEMU_LIBVIRT_kB")
+
+# Normal used (non-huge)
+NormalUsed_kB=$(( MemTotal_kB - Huge_kB - MemFree_kB ))
+(( NormalUsed_kB < 0 )) && NormalUsed_kB=0
+NormalUsed_GiB=$(kb_to_gib "$NormalUsed_kB")
+
+# Other (remaining after subtracting known categories)
+Other_kB=$(( NormalUsed_kB - PageCache_kB - Slab_kB - QEMU_LIBVIRT_kB ))
+(( Other_kB < 0 )) && Other_kB=0
+Other_GiB=$(kb_to_gib "$Other_kB")
+
+pct() { awk -v p="$1" -v t="$2" 'BEGIN{printf "%6.2f%%", (t>0? (p*100/t):0)}'; }
+
+echo -e "\nMemory Breakdown (GiB) — $(hostname)"
+printf "Detected HugePage size: %s kB\n\n" "$Hugepagesize_kB"
+
+printf "%-24s %12s %10s\n" "Category" "GiB" "% of Total"
+printf "%-24s %12s %10s\n" "------------------------" "------------" "---------"
+printf "%-24s %12.2f %10s\n" "Total (OS visible)" "$MemTotal_GiB" "$(pct "$MemTotal_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" "HugePages (reserved)" "$Huge_GiB" "$(pct "$Huge_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" " ├─ Used by guests" "$HugeUsed_GiB" "$(pct "$HugeUsed_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" " └─ Free in pool" "$HugeFree_GiB" "$(pct "$HugeFree_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" "QEMU+libvirt (RSS)" "$QEMU_LIBVIRT_GiB" "$(pct "$QEMU_LIBVIRT_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" "Kernel Slab" "$Slab_GiB" "$(pct "$Slab_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" "Page Cache (buf+cache)" "$PageCache_GiB" "$(pct "$PageCache_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" "Free (normal pages)" "$MemFree_GiB" "$(pct "$MemFree_GiB" "$MemTotal_GiB")"
+printf "%-24s %12.2f %10s\n" "Other (OS/daemons)" "$Other_GiB" "$(pct "$Other_GiB" "$MemTotal_GiB")"
+
+echo -e "\nTop memory processes (RSS):"
+ps -eo pid,comm,%mem,rss --sort=-rss | head -n 15 | awk 'NR==1{printf "%-8s %-22s %8s %12s\n",$1,$2,$3,"%RSS(KB)";next}{printf "%-8s %-22s %8s %12s\n",$1,$2,$3,$4}'
+
+# ---- New Section: Breakdown of "Other/OS daemons" ----
+echo -e "\nDetailed OS/Daemons using memory (excluding QEMU/libvirt):"
+ps -eo pid,comm,%mem,rss --sort=-rss \
+  | awk '$2 !~ /^qemu-system/ && $2 !~ /^libvirtd$/ && NR>1 {printf "%-8s %-22s %8s %12s\n",$1,$2,$3,$4}' \
+  | head -n 25
