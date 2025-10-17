@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# mem_breakdown.sh — Summarize host memory usage (GiB) on a KVM hypervisor with HugePages
+# Usage: sudo bash mem_breakdown.sh
+
+set -euo pipefail
+
+kb_to_gib() { awk -v kb="${1:-0}" 'BEGIN{printf "%.2f", kb/1048576}'; }  # 1 GiB = 1048576 kB
+
+# Pull needed fields from /proc/meminfo (all in kB)
+declare -A M
+while read -r k v _; do M["${k%:}"]="$v"; done < /proc/meminfo
+
+MemTotal_kB=${M[MemTotal]:-0}
+MemFree_kB=${M[MemFree]:-0}
+Buffers_kB=${M[Buffers]:-0}
+Cached_kB=${M[Cached]:-0}
+Slab_kB=${M[Slab]:-0}
+SReclaimable_kB=${M[SReclaimable]:-0}
+SUnreclaim_kB=${M[SUnreclaim]:-0}
+HugePages_Total=${M[HugePages_Total]:-0}
+HugePages_Free=${M[HugePages_Free]:-0}
+Hugepagesize_kB=${M[Hugepagesize]:-2048} # default 2 MiB if missing
+
+# HugePages reserved (total pool) in kB
+Huge_kB=$(( HugePages_Total * Hugepagesize_kB ))
+HugeFree_kB=$(( HugePages_Free * Hugepagesize_kB ))
+HugeUsed_kB=$(( Huge_kB - HugeFree_kB ))
+
+# QEMU & libvirt RSS (kB) — processes that matter on a KVM host
+QEMU_kB=$(ps -eo comm,rss --no-headers | awk '$1 ~ /^qemu-system/ {sum+=$2} END{print sum+0}')
+LIBVIRT_kB=$(ps -eo comm,rss --no-headers | awk '$1 ~ /^libvirtd$/ {sum+=$2} END{print sum+0}')
+QEMU_LIBVIRT_kB=$(( (QEMU_kB + LIBVIRT_kB) ))
+
+# Page cache (rough view): Buffers + Cached
+PageCache_kB=$(( Buffers_kB + Cached_kB ))
+
+# Kernel slab (SReclaimable + SUnreclaim for clarity)
+SlabDetail_kB=$(( SReclaimable_kB + SUnreclaim_kB ))
+# Fallback to Slab if detail not present
+if (( SlabDetail_kB == 0 )); then SlabDetail_kB=$Slab_kB; fi
+
+# Convert to GiB
+MemTotal_GiB=$(kb_to_gib "$MemTotal_kB")
+Huge_GiB=$(kb_to_gib "$Huge_kB")
+HugeFree_GiB=$(kb_to_gib "$HugeFree_kB")
+HugeUsed_GiB=$(kb_to_gib "$HugeUsed_kB")
+MemFree_GiB=$(kb_to_gib "$MemFree_kB")
+PageCache_GiB=$(kb_to_gib "$PageCache_kB")
+Slab_GiB=$(kb_to_gib "$SlabDetail_kB")
+QEMU_LIBVIRT_GiB=$(kb_to_gib "$QEMU_LIBVIRT_kB")
+
+# Compute "normal" (non-huge) used memory:
+# NormalUsed = MemTotal - HugeReserved - MemFree
+NormalUsed_kB=$(( MemTotal_kB - Huge_kB - MemFree_kB ))
+(( NormalUsed_kB < 0 )) && NormalUsed_kB=0
+NormalUsed_GiB=$(kb_to_gib "$NormalUsed_kB")
+
+# Try to attribute normal-used memory to categories we can see:
+# Other = NormalUsed - PageCache - Slab - QEMU/libvirt
+Other_kB=$(( NormalUsed_kB - PageCache_kB - SlabDetail_kB - QEMU_LIBVIRT_kB ))
+# clamp if negative (measurement noise / rounding)
+(( Other_kB < 0 )) && Other_kB=0
+Other_GiB=$(kb_to_gib "$Other_kB")
+
+# Percent helper
+pct() { awk -v part="$1" -v tot="$2" 'BEGIN{printf "%6.2f%%", (tot>0? (part*100/tot):0)}'; }
+
+printf "\nMemory Breakdown (GiB) — %s\n" "$(hostname)"
+printf "Detected HugePage size: %s kB\n\n" "$Hugepagesize_kB"
+
+printf "%-22s %12s %10s\n" "Category" "GiB" "% of Total"
+printf "%-22s %12s %10s\n" "----------------------" "------------" "---------"
+
+printf "%-22s %12.2f %10s\n" "Total (OS visible)" "$MemTotal_GiB" "$(pct "$MemTotal_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" "HugePages (reserved)" "$Huge_GiB"       "$(pct "$Huge_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" " ├─ Used by guests"   "$Huge
