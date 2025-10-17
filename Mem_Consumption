@@ -73,4 +73,18 @@ printf "%-22s %12s %10s\n" "----------------------" "------------" "---------"
 
 printf "%-22s %12.2f %10s\n" "Total (OS visible)" "$MemTotal_GiB" "$(pct "$MemTotal_GiB" "$MemTotal_GiB")"
 printf "%-22s %12.2f %10s\n" "HugePages (reserved)" "$Huge_GiB"       "$(pct "$Huge_GiB" "$MemTotal_GiB")"
-printf "%-22s %12.2f %10s\n" " ├─ Used by guests"   "$Huge
+printf "%-22s %12.2f %10s\n" " ├─ Used by guests"   "$HugeUsed_GiB"   "$(pct "$HugeUsed_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" " └─ Free in pool"     "$HugeFree_GiB"   "$(pct "$HugeFree_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" "QEMU+libvirt (RSS)"   "$QEMU_LIBVIRT_GiB" "$(pct "$QEMU_LIBVIRT_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" "Kernel Slab"          "$Slab_GiB"       "$(pct "$Slab_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" "Page Cache (buf+cache)" "$PageCache_GiB" "$(pct "$PageCache_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" "Free (normal pages)"  "$MemFree_GiB"    "$(pct "$MemFree_GiB" "$MemTotal_GiB")"
+printf "%-22s %12.2f %10s\n" "Other (OS/daemons)"   "$Other_GiB"      "$(pct "$Other_GiB" "$MemTotal_GiB")"
+
+echo
+printf "%-22s %12.2f\n" "Normal Used (calc)" "$NormalUsed_GiB"
+echo
+
+# Optional: top 10 memory processes (RSS)
+echo "Top memory processes (RSS):"
+ps -eo pid,comm,%mem,rss --sort=-rss | head -n 15 | awk 'NR==1{printf "%-8s %-22s %8s %12s\n",$1,$2,$3,"%RSS(KB)";next}{printf "%-8s %-22s %8s %12s\n",$1,$2,$3,$4}'
