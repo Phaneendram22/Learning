@@ -1,0 +1,69 @@
+#!/bin/bash
+#======================================================================
+# Script Name: check_vm_autostart.sh
+# Purpose: Check all running VMs and enable autostart if not already set
+#======================================================================
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+echo "Checking running VMs and their autostart status..."
+echo "------------------------------------------------------"
+
+# Ensure libvirt is available
+if ! command -v virsh >/dev/null 2>&1; then
+  echo "Error: virsh not found. Install libvirt/virsh first." >&2
+  exit 1
+fi
+
+# If systemd is present, ensure libvirtd is running (ignore errors on non-systemd hosts)
+if command -v systemctl >/dev/null 2>&1; then
+  if ! systemctl is-active --quiet libvirtd 2>/dev/null; then
+    echo "Warning: libvirtd does not appear to be active. Continuing anyway..."
+  fi
+fi
+
+# Get all running VMs (filter out empty names)
+RUNNING_VMS=$(virsh list --state-running --name | awk 'NF')
+
+if [[ -z "${RUNNING_VMS}" ]]; then
+  echo "No VMs are currently running."
+  exit 0
+fi
+
+enable_count=0
+skip_count=0
+fail_count=0
+
+for vm in ${RUNNING_VMS}; do
+  # Read current autostart status (formats like 'enable' or 'disable')
+  AUTOSTART_STATUS=$(virsh dominfo "$vm" | awk -F': *' '/^Autostart:/ {print $2}')
+
+  case "${AUTOSTART_STATUS}" in
+    enable|enabled|Enable|Enabled)
+      echo "VM: ${vm}  -->  Autostart already enabled"
+      ((skip_count++))
+      ;;
+    disable|disabled|Disable|Disabled|'')
+      echo -n "VM: ${vm}  -->  Autostart disabled; enabling... "
+      if virsh autostart "$vm" >/dev/null 2>&1; then
+        # Verify
+        NEW_STATUS=$(virsh dominfo "$vm" | awk -F': *' '/^Autostart:/ {print $2}')
+        echo "now: ${NEW_STATUS}"
+        ((enable_count++))
+      else
+        echo "FAILED"
+        ((fail_count++))
+      fi
+      ;;
+    *)
+      echo "VM: ${vm}  -->  Unknown autostart state: '${AUTOSTART_STATUS}'. Skipping."
+      ((fail_count++))
+      ;;
+  esac
+done
+
+echo "------------------------------------------------------"
+echo "Summary: enabled=${enable_count}, already-enabled=${skip_count}, failed=${fail_count}"
+exit ${fail_count}
