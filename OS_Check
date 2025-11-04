@@ -1,0 +1,1 @@
+for vm in $(cat vmlist.txt); do echo -n "$vm: "; virt-cat -d "$vm" /etc/os-release 2>/dev/null | grep PRETTY_NAME || virt-cat -d "$vm" /etc/redhat-release 2>/dev/null || echo "OS not found"; done
