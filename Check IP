@@ -11,3 +11,81 @@ echo "$vm: IP=${ip:-?} GW=${gw:-?} DNS=${dns:-?}"; done
 
 for vm in $(cat vmlist.txt); do ip= gw= dns= os= kernel=; cpu=$(virsh dominfo "$vm" 2>/dev/null | awk -F: '/CPU\(s\)/{gsub(/ /,"",$2);print $2}'); memk=$(virsh dominfo "$vm" 2>/dev/null | awk -F: '/Max memory/{gsub(/ KiB/,"",$2);gsub(/ /,"",$2);print $2}'); mem=$(( ${memk:-0} / 1024 )); os=$(virt-cat -d "$vm" /etc/os-release 2>/dev/null | awk -F= '/^PRETTY_NAME=/{sub(/^"/,"",$2);sub(/"$/,"",$2);print $2;exit}'); [ -z "$os" ] && os=$(virt-cat -d "$vm" /etc/redhat-release 2>/dev/null); kernel=$(virt-ls -d "$vm" /lib/modules 2>/dev/null | sort -V | tail -1); [ -z "$kernel" ] && kernel=$(virt-ls -d "$vm" /usr/lib/modules 2>/dev/null | sort -V | tail -1); for f in $(virt-ls -d "$vm" /etc/sysconfig/network-scripts 2>/dev/null | grep '^ifcfg-' || true); do c=$(virt-cat -d "$vm" "/etc/sysconfig/network-scripts/$f" 2>/dev/null); [ -z "$ip" ] && ip=$(echo "$c" | awk -F= '/^IPADDR=/{print $2;exit}'); [ -z "$gw" ] && gw=$(echo "$c" | awk -F= '/^GATEWAY=/{print $2;exit}'); [ -z "$dns" ] && dns=$(echo "$c" | awk -F= '/^DNS1=/{print $2;exit}'); done; if [ -z "$ip$gw$dns" ]; then c=$(virt-cat -d "$vm" /etc/network/interfaces 2>/dev/null); [ -n "$c" ] && { [ -z "$ip" ] && ip=$(echo "$c" | awk '/^[[:space:]]*address[[:space:]]/{print $2;exit}'); [ -z "$gw" ] && gw=$(echo "$c" | awk '/^[[:space:]]*gateway[[:space:]]/{print $2;exit}'); [ -z "$dns" ] && dns=$(echo "$c" | awk '/^[[:space:]]*dns-nameservers[[:space:]]/{for(i=2;i<=NF;i++)printf(i==2?$i:" "$i);print "" ;exit}'); }; fi; if [ -z "$ip$gw$dns" ]; then for nf in $(virt-ls -d "$vm" /etc/netplan 2>/dev/null | grep -E '\.ya?ml$' || true); do n=$(virt-cat -d "$vm" "/etc/netplan/$nf" 2>/dev/null); [ -z "$ip" ] && ip=$(echo "$n" | awk -F'[][]' '/addresses:[[:space:]]*\[/{gsub(/.*\[/,"");gsub(/\].*/,"");gsub(/,/, " ");print $1;exit} /addresses:[[:space:]]*$/ {getline;gsub(/^- /,"");print;exit}'); [ -z "$gw" ] && gw=$(echo "$n" | awk '/gateway4:[[:space:]]/{print $2;exit}'); [ -z "$dns" ] && dns=$(echo "$n" | awk -F'[][]' '/nameservers:[[:space:]]*$/ {f=1;next} f&&/addresses:[[:space:]]*\[/{gsub(/.*\[/,"");gsub(/\].*/,"");gsub(/,/, " ");print;exit}'); done; fi; [ -z "$dns" ] && dns=$(virt-cat -d "$vm" /etc/resolv.conf 2>/dev/null | awk '/^nameserver/{print $2}' | paste -sd' ' -); echo "$vm: CPU=${cpu:-?} MEM_MiB=${mem:-?} OS=\"${os:-?}\" KERNEL=${kernel:-?} IP=${ip:-?} GW=${gw:-?} DNS=${dns:-?}"; done
 
+
+
+
+#!/bin/bash
+#====================================================================
+# Script Name : get_vm_details.sh
+# Purpose     : Collect CPU, Memory(GB), OS, Kernel, IP, GW, DNS
+#               for VMs listed in vmlist.txt using virt-* tools
+# Requirements: libguestfs-tools, virsh access to domains
+#====================================================================
+
+VMLIST_FILE=${1:-vmlist.txt}
+
+if [[ ! -f "$VMLIST_FILE" ]]; then
+    echo "ERROR: VM list file '$VMLIST_FILE' not found."
+    exit 1
+fi
+
+echo "VM,CPU,Memory(GB),OS,Kernel,IP,Gateway,DNS" > vm_details.csv
+
+while read -r vm; do
+    [[ -z "$vm" ]] && continue
+
+    # --- CPU and Memory ---
+    cpu=$(virsh dominfo "$vm" 2>/dev/null | awk -F: '/CPU\(s\)/{gsub(/ /,"",$2);print $2}')
+    memk=$(virsh dominfo "$vm" 2>/dev/null | awk -F: '/Max memory/{gsub(/ KiB/,"",$2);gsub(/ /,"",$2);print $2}')
+    # Convert KiB → GB (rounded to 2 decimals)
+    mem=$(awk "BEGIN {printf \"%.2f\", (${memk:-0}/1024/1024)}")
+
+    # --- OS detection ---
+    os=$(virt-cat -d "$vm" /etc/os-release 2>/dev/null | awk -F= '/^PRETTY_NAME=/{gsub(/"/,"",$2);print $2;exit}')
+    [[ -z "$os" ]] && os=$(virt-cat -d "$vm" /etc/redhat-release 2>/dev/null)
+
+    # --- Kernel detection ---
+    kernel=$(virt-ls -d "$vm" /lib/modules 2>/dev/null | sort -V | tail -1)
+    [[ -z "$kernel" ]] && kernel=$(virt-ls -d "$vm" /usr/lib/modules 2>/dev/null | sort -V | tail -1)
+
+    # --- Network detection ---
+    ip=; gw=; dns=
+
+    # RHEL/CentOS/Rocky ifcfg files
+    for f in $(virt-ls -d "$vm" /etc/sysconfig/network-scripts 2>/dev/null | grep '^ifcfg-' || true); do
+        c=$(virt-cat -d "$vm" "/etc/sysconfig/network-scripts/$f" 2>/dev/null)
+        [[ -z "$ip" ]] && ip=$(echo "$c" | awk -F= '/^IPADDR=/{print $2;exit}')
+        [[ -z "$gw" ]] && gw=$(echo "$c" | awk -F= '/^GATEWAY=/{print $2;exit}')
+        [[ -z "$dns" ]] && dns=$(echo "$c" | awk -F= '/^DNS1=/{print $2;exit}')
+    done
+
+    # Debian/Ubuntu ifupdown
+    if [[ -z "$ip$gw$dns" ]]; then
+        c=$(virt-cat -d "$vm" /etc/network/interfaces 2>/dev/null)
+        if [[ -n "$c" ]]; then
+            [[ -z "$ip" ]] && ip=$(echo "$c" | awk '/^[[:space:]]*address[[:space:]]/{print $2;exit}')
+            [[ -z "$gw" ]] && gw=$(echo "$c" | awk '/^[[:space:]]*gateway[[:space:]]/{print $2;exit}')
+            [[ -z "$dns" ]] && dns=$(echo "$c" | awk '/^[[:space:]]*dns-nameservers[[:space:]]/{for(i=2;i<=NF;i++)printf(i==2?$i:" "$i);print "" ;exit}')
+        fi
+    fi
+
+    # Netplan YAML
+    if [[ -z "$ip$gw$dns" ]]; then
+        for nf in $(virt-ls -d "$vm" /etc/netplan 2>/dev/null | grep -E '\.ya?ml$' || true); do
+            n=$(virt-cat -d "$vm" "/etc/netplan/$nf" 2>/dev/null)
+            [[ -z "$ip" ]] && ip=$(echo "$n" | awk -F'[][]' '/addresses:[[:space:]]*\[/{gsub(/.*\[/,"");gsub(/\].*/,"");gsub(/,/, " ");print $1;exit} /addresses:[[:space:]]*$/ {getline;gsub(/^- /,"");print;exit}')
+            [[ -z "$gw" ]] && gw=$(echo "$n" | awk '/gateway4:[[:space:]]/{print $2;exit}')
+            [[ -z "$dns" ]] && dns=$(echo "$n" | awk -F'[][]' '/nameservers:[[:space:]]*$/ {f=1;next} f&&/addresses:[[:space:]]*\[/{gsub(/.*\[/,"");gsub(/\].*/,"");gsub(/,/, " ");print;exit}')
+        done
+    fi
+
+    # Fallback to resolv.conf
+    [[ -z "$dns" ]] && dns=$(virt-cat -d "$vm" /etc/resolv.conf 2>/dev/null | awk '/^nameserver/{print $2}' | paste -sd' ' -)
+
+    echo "$vm,${cpu:-?},${mem:-?},\"${os:-?}\",${kernel:-?},${ip:-?},${gw:-?},${dns:-?}" >> vm_details.csv
+
+done < "$VMLIST_FILE"
+
+echo
+echo "✅ VM details collected successfully → vm_details.csv"
+column -s, -t vm_details.csv | less -S
