@@ -89,3 +89,9 @@ done < "$VMLIST_FILE"
 echo
 echo "✅ VM details collected successfully → vm_details.csv"
 column -s, -t vm_details.csv | less -S
+
+
+
+
+for ip in $(cat iplist.txt); do ping -c1 -W1 $ip &>/dev/null && echo "$ip is reachable" || echo "$ip is not reachable"; done
+
