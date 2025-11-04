@@ -1,0 +1,8 @@
+for vm in $(cat vmlist.txt); do ip= gw= dns=; \
+# RHEL/CentOS/Rocky ifcfg-*
+for f in $(virt-ls -d "$vm" /etc/sysconfig/network-scripts 2>/dev/null | grep '^ifcfg-' || true); do c=$(virt-cat -d "$vm" "/etc/sysconfig/network-scripts/$f" 2>/dev/null); [ -z "$ip" ] && ip=$(echo "$c" | awk -F= '/^IPADDR=/{print $2; exit}'); [ -z "$gw" ] && gw=$(echo "$c" | awk -F= '/^GATEWAY=/{print $2; exit}'); [ -z "$dns" ] && dns=$(echo "$c" | awk -F= '/^DNS1=/{print $2; exit}'); done; \
+# Debian/Ubuntu ifupdown (/etc/network/interfaces)
+if [ -z "$ip" ]; then c=$(virt-cat -d "$vm" /etc/network/interfaces 2>/dev/null); [ -n "$c" ] && { ip=$(echo "$c" | awk '/^[[:space:]]*address[[:space:]]/{print $2;exit}'); gw=$(echo "$c" | awk '/^[[:space:]]*gateway[[:space:]]/{print $2;exit}'); dns=$(echo "$c" | awk '/^[[:space:]]*dns-nameservers[[:space:]]/{for(i=2;i<=NF;i++)printf(i==2?$i:" "$i);print "" ;exit}'); }; fi; \
+# Netplan YAML (/etc/netplan/*.yaml)
+if [ -z "$ip" ]; then for nf in $(virt-ls -d "$vm" /etc/netplan 2>/dev/null | grep -E '\.ya?ml$' || true); do n=$(virt-cat -d "$vm" "/etc/netplan/$nf" 2>/dev/null); [ -z "$ip" ] && ip=$(echo "$n" | awk -F'[][]' '/addresses:[[:space:]]*\[/{gsub(/.*addresses:[[:space:]]*\[/,""); gsub(/\].*/,""); gsub(/,/, " "); print $1; exit} /addresses:[[:space:]]*$/ {getline; gsub(/^- /,""); print; exit}'); [ -z "$gw" ] && gw=$(echo "$n" | awk '/gateway4:[[:space:]]/{print $2; exit}'); [ -z "$dns" ] && dns=$(echo "$n" | awk -F'[][]' '/nameservers:[[:space:]]*$/ {f=1} f&&/addresses:[[:space:]]*\[/{gsub(/.*\[/,""); gsub(/\].*/,""); gsub(/,/, " "); print; exit}'); done; fi; \
+echo "$vm: IP=${ip:-?} GW=${gw:-?} DNS=${dns:-?}"; done
