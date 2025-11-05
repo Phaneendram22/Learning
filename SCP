@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# File to copy
+SRC_FILE="/path/to/source/file.txt"
+
+# Remote destination path
+DEST_PATH="/root/"
+
+# Root password (plain text, use with caution)
+PASSWORD="YourRootPassword"
+
+# File containing target hosts (one per line)
+HOST_LIST="hosts.txt"
+
+# Loop through each host and copy
+for HOST in $(cat "$HOST_LIST"); do
+    echo "Copying file to $HOST ..."
+    sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no "$SRC_FILE" root@"$HOST":"$DEST_PATH"
+    if [[ $? -eq 0 ]]; then
+        echo "File successfully copied to $HOST"
+    else
+        echo "Failed to copy file to $HOST"
+    fi
+done
