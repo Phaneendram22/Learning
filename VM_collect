@@ -75,3 +75,9 @@ grep -vE '^\s*(#|$)' hosts.txt | xargs -I{} -P 10 \
   bash -c 'echo "===== {} =====";
            sshpass -p "'"$PW"'" ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=6 root@{} "'"$CMD"'" </dev/null'
 
+
+
+
+for vm in $(virsh list --state-running --name); do echo "Shutting down $vm..."; virsh shutdown "$vm"; sleep 10; virsh domstate "$vm" | grep -q running && { echo "Force stopping $vm..."; virsh destroy "$vm"; }; done
+
+
