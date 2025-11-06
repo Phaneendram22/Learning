@@ -44,3 +44,73 @@ for server in "${KVM_SERVERS[@]}"; do
 done
 
 echo "All specified KVM servers processed."
+
+
+
+
+
+
+#!/bin/bash
+# Shut down all running VMs on a list of KVM hosts
+
+USER="abcde"                 # SSH user
+PW="new_password"            # SSH password
+TIMEOUT_SECS=300             # Wait up to 300 seconds per VM for graceful shutdown
+SLEEP_STEP=10                # Poll interval in seconds
+
+KVM_SERVERS=(
+  "pocnjrsv301.pocnj.cip.att.com"
+  "pocnjrsv302.pocnj.cip.att.com"
+  "pocnjrsv303.pocnj.cip.att.com"
+  "pocnjrsv304.pocnj.cip.att.com"
+  "pocnjrsv305.pocnj.cip.att.com"
+  "pocnjrsv308.pocnj.cip.att.com"
+  "pocnjrsv311.pocnj.cip.att.com"
+  "pocnjrsv501.pocnj.cip.att.com"
+  "pocnjrsv117.pocnj.cip.att.com"
+  "pocnjrsv118.pocnj.cip.att.com"
+)
+
+for server in "${KVM_SERVERS[@]}"; do
+  echo "===== $server ====="
+  sshpass -p "$PW" ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=8 "${USER}@${server}" bash -s </dev/null <<'REMOTE'
+set -u
+
+echo "HOSTNAME: $(hostname -f 2>/dev/null || hostname)"
+
+# List only running VMs
+mapfile -t VMS < <(sudo virsh list --state-running --name 2>/dev/null | sed '/^$/d')
+if [[ ${#VMS[@]} -eq 0 ]]; then
+  echo "No running VMs found"
+  exit 0
+fi
+
+echo "Running VMs: ${VMS[*]}"
+
+for vm in "${VMS[@]}"; do
+  echo "Gracefully shutting down: $vm"
+  sudo virsh shutdown "$vm" >/dev/null 2>&1 || echo "  warn: shutdown command failed for $vm"
+
+  waited=0
+  while true; do
+    state=$(sudo virsh domstate "$vm" 2>/dev/null || echo unknown)
+    if [[ "$state" != "running" ]]; then
+      echo "  $vm state: $state (graceful)"
+      break
+    fi
+    if (( waited >= TIMEOUT_SECS )); then
+      echo "  $vm still running after ${TIMEOUT_SECS}s; forcing off..."
+      sudo virsh destroy "$vm" >/dev/null 2>&1 || echo "  ERROR: destroy failed for $vm"
+      state=$(sudo virsh domstate "$vm" 2>/dev/null || echo unknown)
+      echo "  $vm state: $state (forced)"
+      break
+    fi
+    sleep SLEEP_STEP
+    waited=$((waited + SLEEP_STEP))
+  done
+done
+REMOTE
+done
+
+echo "All specified KVM servers processed."
+
