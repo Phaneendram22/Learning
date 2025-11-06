@@ -14,3 +14,21 @@ PW='YourRootPassword'; while read -r H; do
     fi
   '
 done < hosts.txt
+
+
+
+
+#!/bin/bash
+
+PASSWORD="YourRootPassword"
+HOSTLIST="hosts.txt"
+
+while read -r HOST; do
+    echo "===== $HOST ====="
+    sshpass -p "$PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@"$HOST" "
+        echo 'HOSTNAME:' \$(hostname -f 2>/dev/null || hostname)
+        virsh list --all | awk 'NR>2 {if (\$0 !~ /^$/) print}' | awk '{printf \"VM: %-40s STATE: %s\n\", \$2, \$3}'
+    "
+    echo
+done < "$HOSTLIST"
+
