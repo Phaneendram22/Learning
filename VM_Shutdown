@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# List of KVM server hostnames or IP addresses
+KVM_SERVERS=(
+     "pocnjrsv301.pocnj.cip.att.com"
+     "pocnjrsv302.pocnj.cip.att.com"
+     "pocnjrsv303.pocnj.cip.att.com"
+     "pocnjrsv304.pocnj.cip.att.com"
+     "pocnjrsv305.pocnj.cip.att.com"
+     "pocnjrsv308.pocnj.cip.att.com"
+     "pocnjrsv311.pocnj.cip.att.com"
+     "pocnjrsv501.pocnj.cip.att.com"
+     "pocnjrsv117.pocnj.cip.att.com"
+     "pocnjrsv118.pocnj.cip.att.com"
+)
+
+
+# Loop through each KVM server
+for server in "${KVM_SERVERS[@]}"; do
+    echo "Connecting to $server..."
+    # Get a list of running VMs on the current server
+    RUNNING_VMS=$(sshpass -pnew_password ssh sb278f@$server "sudo virsh list --name")
+
+    if [ -z "$RUNNING_VMS" ]; then
+        echo "No running VMs found on $server."
+    else
+        echo "Shutting down VMs on $server:"
+        for vm in $RUNNING_VMS; do
+            echo "  Shutting down $vm..."
+            # Attempt a graceful shutdown
+            sshpass -pnew_password ssh sb278f@$server "sudo virsh shutdown $vm" &
+            # Wait for VM to shut down (optional, adjust timeout as needed)
+            sleep 60
+            # Check if VM is still running, if so, force destroy (use with caution)
+            VM_STATE=$(sshpass -pnew_password ssh sb278f@$server "sudo virsh dominfo $vm | grep -w 'State:' | awk '{print $2}'")
+            if [ "$VM_STATE" == "running" ]; then
+                echo "  $vm did not shut down gracefully, forcing destroy..."
+                sshpass -pnew_password ssh sb278f@$server "sudo virsh destroy $vm"
+            fi
+        done
+    fi
+    echo "Finished processing $server."
+    echo ""
+done
+
+echo "All specified KVM servers processed."
