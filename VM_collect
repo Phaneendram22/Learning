@@ -65,3 +65,13 @@ EOF
 done < "$HOSTLIST"
 
 
+
+
+
+PW='YourRootPassword'
+CMD='df -h /'
+
+grep -vE '^\s*(#|$)' hosts.txt | xargs -I{} -P 10 \
+  bash -c 'echo "===== {} =====";
+           sshpass -p "'"$PW"'" ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=6 root@{} "'"$CMD"'" </dev/null'
+
