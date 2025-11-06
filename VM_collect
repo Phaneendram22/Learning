@@ -1,0 +1,16 @@
+PW='YourRootPassword'; while read -r H; do
+  echo "===== $H ====="
+  sshpass -p "$PW" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@"$H" '
+    HN=$(hostname -f 2>/dev/null || hostname)
+    echo "HOSTNAME: $HN"
+    VMS=$(virsh list --all --name | sed "/^$/d")
+    if [ -z "$VMS" ]; then
+      echo "No VMs found"
+    else
+      echo "$VMS" | while read -r vm; do
+        st=$(virsh domstate "$vm" 2>/dev/null)
+        printf "VM: %-40s STATE: %s\n" "$vm" "$st"
+      done
+    fi
+  '
+done < hosts.txt
