@@ -32,3 +32,36 @@ while read -r HOST; do
     echo
 done < "$HOSTLIST"
 
+
+
+#!/bin/bash
+PASSWORD="YourRootPassword"
+HOSTLIST="hosts.txt"
+
+while IFS= read -r HOST; do
+  [[ -z "$HOST" || "$HOST" =~ ^# ]] && continue
+  echo "===== $HOST ====="
+  sshpass -p "$PASSWORD" ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@"$HOST" '
+    HN=$(hostname -f 2>/dev/null || hostname)
+    echo "HOSTNAME: $HN"
+
+    if ! command -v virsh >/dev/null 2>&1; then
+      echo "virsh not found"
+      exit 0
+    fi
+
+    VMS=$(virsh list --all --name | sed "/^$/d")
+    if [ -z "$VMS" ]; then
+      echo "No VMs found"
+    else
+      while IFS= read -r vm; do
+        st=$(virsh domstate "$vm" 2>/dev/null)
+        printf "VM: %-40s STATE: %s\n" "$vm" "$st"
+      done <<EOF
+$VMS
+EOF
+    fi
+  ' </dev/null
+done < "$HOSTLIST"
+
+
