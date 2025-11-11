@@ -1,0 +1,1 @@
+for vm in $(cat /var/tmp/vmlist.txt); do echo "Starting $vm"; virsh start "$vm"; done
