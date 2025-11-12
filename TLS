@@ -1,0 +1,12 @@
+TLS_Protocol=`/bin/racadm get idrac.webserver.tlsprotocol|sed -n 2p`
+echo "Checking for TLS_Protocol=TLS 1.1 and Higher"
+echo ""
+ 
+if [ "$TLS_Protocol" != "TLS 1.1 and Higher" ]
+then
+        /bin/racadm set idrac.webserver.tlsprotocol 1
+        REBOOT_FLAG="TRUE"
+        echo ""
+        sleep 10
+fi
+ 
