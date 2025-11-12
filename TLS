@@ -10,3 +10,39 @@ then
         sleep 10
 fi
  
+
+
+
+Check_iDRAC_TLS() {
+    echo "----------------------------------------------------"
+    echo "Checking iDRAC Web TLS Protocol Configuration..."
+    echo "----------------------------------------------------"
+
+    # Get current TLS setting (2nd line of racadm output)
+    TLS_Protocol=$(/bin/racadm get idrac.webserver.tlsprotocol | sed -n 2p)
+
+    echo "Current TLS Protocol setting: $TLS_Protocol"
+    echo "Expected TLS Protocol: TLS 1.1 and Higher"
+    echo ""
+
+    # Compare and fix if needed
+    if [ "$TLS_Protocol" != "TLS 1.1 and Higher" ]; then
+        echo "Updating TLS protocol setting to 'TLS 1.1 and Higher'..."
+        /bin/racadm set idrac.webserver.tlsprotocol 1
+
+        if [ $? -eq 0 ]; then
+            echo "Successfully updated TLS protocol setting."
+            REBOOT_FLAG="TRUE"
+        else
+            echo "Failed to update TLS protocol setting!"
+        fi
+
+        echo ""
+        sleep 10
+    else
+        echo "TLS Protocol already set correctly. No change required."
+    fi
+
+    echo "----------------------------------------------------"
+    echo ""
+}
