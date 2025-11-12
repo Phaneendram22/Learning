@@ -1,0 +1,4 @@
+DEV=$(lspci | grep -i mellanox | head -1 | awk '{print $1}')
+ethtool -i $(ip -br link | grep "$DEV" | awk '{print $1}') 2>/dev/null | grep firmware
+lspci -s $DEV -vvv | grep -i subsystem
+cat /sys/bus/pci/devices/0000:$DEV/{vendor,device,subsystem_vendor,subsystem_device}
