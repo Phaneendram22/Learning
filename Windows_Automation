@@ -12,3 +12,62 @@ netsh interface ip set dns name="Ethernet" static 8.8.8.8
 
 del "%~f0"
 
+
+
+
+
+libguestfs (which virt-copy-in uses under the hood) will force the filesystem to read-only if:
+
+The VM was hibernated
+
+Fast startup / hybrid shutdown is enabled
+
+
+Cleanly shut down Windows & disable Fast Startup
+
+Boot the Windows VM from that qcow2.
+
+Inside Windows, disable hibernation / fast startup:
+
+Open an elevated cmd:
+
+powercfg -h off
+
+This disables hibernation and fast startup and removes hiberfil.sys
+
+Now do a proper shutdown
+
+Start → Power → Shut down
+
+virt-copy-in -a /var/lib/libvirt/images/winvm.qcow2 setip.bat 'C:\'
+
+Copy your file to Startup:
+
+virt-copy-in -a win.qcow2 setip.bat \ 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\'
+
+Runs every boot → you must add logic inside the BAT file to delete itself after running
+
+
+Your setip.bat script is a Windows batch file that:
+
+✅ 1. Sets a static IP address on the “Ethernet” network interface
+
+This configures:
+
+IP Address: 192.168.1.100
+
+Subnet Mask: 255.255.255.0
+
+Default Gateway: 192.168.1.1
+
+2. Sets the DNS server for the same interface
+
+netsh interface ip set dns name="Ethernet" static 8.8.8.8
+
+3. Deletes itself after running
+
+Delete the batch file after it finishes executing.
+
+This ensures the script runs only once (commonly used in first-boot automation).
+
+
