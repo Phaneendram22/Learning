@@ -1,0 +1,2 @@
+virt-copy-in -a win.qcow2 setip.bat \
+  'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\'
