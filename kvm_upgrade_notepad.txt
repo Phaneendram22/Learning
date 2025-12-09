@@ -81,3 +81,7 @@ Final Statement:
 
 for vm in $(virsh list --all --name); do virsh dumpxml "$vm" >/root/vm_xml_backup/${vm}.xml; done
 
+
+for xml in /root/vm_xml_backup/*.xml; do virsh define "$xml"; done
+
+
