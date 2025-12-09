@@ -77,3 +77,7 @@ virsh start <VM_NAME>
 
 Final Statement:
 “The hypervisor upgrade can proceed once all prerequisite steps — including VM shutdown, XML dumping, and qcow2 backups — are fully completed and validated.”
+
+
+for vm in $(virsh list --all --name); do virsh dumpxml "$vm" >/root/vm_xml_backup/${vm}.xml; done
+
