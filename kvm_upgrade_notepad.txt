@@ -1,0 +1,79 @@
+KVM Hypervisor Upgrade Procedure (Ubuntu 18 → Ubuntu 22)
+
+1. Overview
+This document outlines the process for upgrading a KVM hypervisor from Ubuntu 18.04 to Ubuntu 22.04. Because hypervisor filesystems may be reformatted during the upgrade, it is critical to shutdown VMs, back up configuration XML files, and copy all qcow2 images to a remote server before proceeding.
+
+2. Prerequisites (Mandatory)
+
+2.1 Shutdown All Virtual Machines
+virsh list --all
+virsh shutdown <VM_NAME>
+virsh destroy <VM_NAME>
+virsh list --state-shutoff
+
+2.2 Dump XML Definitions for All VMs
+mkdir -p /root/vm_xml_backup
+for vm in $(virsh list --all --name); do
+    virsh dumpxml "$vm" > /root/vm_xml_backup/${vm}.xml
+done
+
+2.3 Back Up All qcow2 Images to Remote Server
+scp -r /var/lib/libvirt/images/*.qcow2 USER@BACKUP_SERVER:/BACKUP_DIR/images/
+scp -r /var/lib/libvirt/images/ USER@BACKUP_SERVER:/BACKUP_DIR/images/
+
+scp -r /guestdata/*.qcow2 USER@BACKUP_SERVER:/BACKUP_DIR/guestdata/
+scp -r /guestdata/ USER@BACKUP_SERVER:/BACKUP_DIR/guestdata/
+
+2.4 Compress Before Transfer
+tar -czvf kvm_images_backup.tar.gz /var/lib/libvirt/images /guestdata
+scp kvm_images_backup.tar.gz USER@BACKUP_SERVER:/BACKUP_DIR/
+
+2.5 Confirm Disk Space
+du -sh /var/lib/libvirt/images
+du -sh /guestdata
+
+3. Optional Automated Backup Script
+#!/bin/bash
+BACKUP_SERVER="10.10.10.10"
+BACKUP_DIR="/remote/backup/kvm"
+USER="backupuser"
+
+mkdir -p /root/vm_xml_backup
+for vm in $(virsh list --all --name); do
+    virsh dumpxml "$vm" > /root/vm_xml_backup/${vm}.xml
+done
+
+scp -r /var/lib/libvirt/images/ $USER@$BACKUP_SERVER:$BACKUP_DIR/images/
+scp -r /guestdata/ $USER@$BACKUP_SERVER:$BACKUP_DIR/guestdata/
+
+4. Upgrade Procedure (Ubuntu 18 → Ubuntu 22)
+apt update && apt upgrade -y
+cp -r /etc/libvirt /root/libvirt_backup
+cp -r /etc/netplan /root/netplan_backup
+do-release-upgrade
+
+5. Post-Upgrade Validation
+systemctl status libvirtd
+systemctl status virtlogd
+systemctl status virtqemud
+
+ip a
+brctl show
+netplan apply
+
+cd /root/vm_xml_backup
+virsh define vmname.xml
+virsh start <VM_NAME>
+
+6. Rollback Plan
+scp -r USER@BACKUP_SERVER:/BACKUP_DIR/images/* /var/lib/libvirt/images/
+scp -r USER@BACKUP_SERVER:/BACKUP_DIR/guestdata/* /guestdata/
+
+for xml in /root/vm_xml_backup/*.xml; do
+    virsh define "$xml"
+done
+
+virsh start <VM_NAME>
+
+Final Statement:
+“The hypervisor upgrade can proceed once all prerequisite steps — including VM shutdown, XML dumping, and qcow2 backups — are fully completed and validated.”
