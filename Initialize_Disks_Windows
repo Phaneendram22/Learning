@@ -1,0 +1,11 @@
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+
+
+$disks = Get-Disk | Where-Object { $_.PartitionStyle -eq 'RAW' -and $_.Number -ne 0 }
+
+foreach ($disk in $disks) {
+    Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+    $partition = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
+    Format-Volume -Partition $partition -FileSystem NTFS -NewFileSystemLabel "DataDisk" -Confirm:$false
+}
+
