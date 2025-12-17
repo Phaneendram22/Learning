@@ -73,3 +73,17 @@ REM Remove scheduled task so it runs once
 schtasks /delete /tn FirstBoot-Net /f
 
 exit /b 0
+
+
+#################################################################################################################################################################################################
+
+
+
+@echo off
+netsh interface ip set address name="Ethernet Instance 0" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="Ethernet Instance 0" addr=135.21.13.15 index=1
+wmic computersystem where name="%computername%" call rename "rd2wa601wtds01"
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+shutdown /r /t 0
+del "%~f0"
