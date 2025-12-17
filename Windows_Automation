@@ -22,6 +22,9 @@ The VM was hibernated
 
 Fast startup / hybrid shutdown is enabled
 
+virt-customize -a windows.qcow2 --run-command "schtasks /create /tn FirstBoot-Net /sc onstart /ru SYSTEM /rl HIGHEST /tr \"cmd.exe /c C:\\setip.bat\""
+
+
 
 Cleanly shut down Windows & disable Fast Startup
 
