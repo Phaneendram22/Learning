@@ -66,6 +66,12 @@ netsh interface ip set dns name="Ethernet" static 8.8.8.8
 
 3. Deletes itself after running
 
+
+
+virt-customize -a windows.qcow2 --copy-in /root/setip.bat:/
+virt-customize -a windows.qcow2 --run-command 'schtasks /create /tn FirstBoot-Net /sc onstart /ru SYSTEM /rl HIGHEST /tr "cmd.exe /c C:\\setip.bat"'
+
+
 Delete the batch file after it finishes executing.
 
 This ensures the script runs only once (commonly used in first-boot automation).
