@@ -44,3 +44,32 @@ schtasks /delete /tn FirstBoot-Net /f
 
 exit /b 0
 
+@echo off
+setlocal EnableDelayedExpansion
+
+REM Wait for networking to come up
+timeout /t 30 /nobreak >nul
+
+REM Find first connected interface (robust)
+for /f "tokens=1,* delims=:" %%A in ('
+  netsh interface show interface ^| findstr /R /C:"Connected"
+') do (
+  for %%I in (%%B) do set IFACE=%%I
+)
+
+REM If still empty, fallback to Ethernet
+if "%IFACE%"=="" set IFACE=Ethernet
+
+echo Using interface: %IFACE%
+
+REM Assign static IP
+netsh interface ipv4 set address name="%IFACE%" static 192.168.1.100 255.255.255.0 192.168.1.1
+
+REM Set DNS
+netsh interface ipv4 set dns name="%IFACE%" static 8.8.8.8
+netsh interface ipv4 add dns name="%IFACE%" 8.8.4.4 index=2
+
+REM Remove scheduled task so it runs once
+schtasks /delete /tn FirstBoot-Net /f
+
+exit /b 0
