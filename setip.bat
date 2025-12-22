@@ -132,3 +132,36 @@ shutdown /r /t 0
 REM Delete script after execution
 del "%~f0"
 
+
+
+##############################################################################################################################################
+
+
+
+@echo off
+setlocal EnableDelayedExpansion
+
+for /f "tokens=*" %%I in ('netsh interface show interface ^| findstr /I "Ethernet Instance"') do (
+    set IFACE=%%I
+    goto :FOUND
+)
+
+:FOUND
+if "%IFACE%"=="" (
+    echo ERROR: Ethernet Instance interface not found
+    exit /b 1
+)
+
+REM Extract interface name (last column)
+for %%A in (%IFACE%) do set IFACE_NAME=%%A
+
+REM Apply settings
+netsh interface ip set address name="%IFACE_NAME%" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="%IFACE_NAME%" addr=135.21.13.15 index=1
+
+wmic computersystem where name="%computername%" call rename "rd2wa601wtds01"
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+shutdown /r /t 0
+del "%~f0"
+
