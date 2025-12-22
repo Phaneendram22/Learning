@@ -339,3 +339,34 @@ shutdown /r /t 0
 
 REM Self delete
 del "%~f0"
+
+
+###############################################################################################################################################
+
+
+
+@echo off
+setlocal EnableDelayedExpansion
+
+timeout /t 15 /nobreak
+
+REM Pick FIRST enabled Ethernet interface only
+for /f "skip=1 delims=" %%I in (
+  'wmic nic where "NetEnabled=true AND AdapterTypeID=0" get NetConnectionID ^| findstr /R /V "^$"'
+) do (
+    set IFACE_NAME=%%I
+    goto FOUND
+)
+
+:FOUND
+echo Using interface: "!IFACE_NAME!"
+
+netsh interface ip set address name="!IFACE_NAME!" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="!IFACE_NAME!" addr=135.21.13.15 index=1
+
+wmic computersystem where name="%computername%" call rename "rd2wa601wtds01"
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+shutdown /r /t 0
+del "%~f0"
+
