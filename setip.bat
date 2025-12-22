@@ -430,3 +430,42 @@ netsh interface ip set address name="Ethernet" static 32.123.205.165 255.255.255
 netsh interface ip add dns name="Ethernet" addr=135.21.13.15 index=1
 
 shutdown /r /t 0
+
+
+###########################################################################################################################################
+
+
+@echo off
+setlocal EnableDelayedExpansion
+
+timeout /t 10 /nobreak
+
+REM Get clean interface name
+for /f "skip=1 delims=" %%I in (
+  'wmic nic where "NetEnabled=true AND AdapterTypeID=0" get NetConnectionID ^| findstr /R /V "^$"'
+) do (
+    set "IFACE_NAME=%%I"
+    goto FOUND
+)
+
+:FOUND
+REM Trim trailing spaces
+for /f "tokens=* delims= " %%A in ("!IFACE_NAME!") do set "IFACE_NAME=%%A"
+
+echo Using interface: "!IFACE_NAME!"
+
+REM OPTIONAL: Rename once to avoid future issues
+netsh interface set interface name="!IFACE_NAME!" newname="Ethernet"
+
+REM Assign static IP
+netsh interface ip set address name="Ethernet" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="Ethernet" addr=135.21.13.15 index=1
+
+REM Continue your tasks
+wmic computersystem where name="%computername%" call rename "rd2wa601wtds01"
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+
+shutdown /r /t 0
+del "%~f0"
+
