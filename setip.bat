@@ -400,3 +400,33 @@ netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=
 powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
 shutdown /r /t 0
 del "%~f0"
+
+
+
+###############################################################################################################################################
+
+
+
+@echo off
+setlocal EnableDelayedExpansion
+
+timeout /t 10 /nobreak
+
+for /f "skip=1 delims=" %%I in (
+  'wmic nic where "NetEnabled=true AND AdapterTypeID=0" get NetConnectionID ^| findstr /R /V "^$"'
+) do (
+    set IFACE_NAME=%%I
+    goto FOUND
+)
+
+:FOUND
+echo Using interface: "!IFACE_NAME!"
+
+REM Optional rename (do once)
+netsh interface set interface name="!IFACE_NAME!" newname="Ethernet"
+
+REM Assign IP
+netsh interface ip set address name="Ethernet" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="Ethernet" addr=135.21.13.15 index=1
+
+shutdown /r /t 0
