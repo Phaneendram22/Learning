@@ -370,3 +370,33 @@ powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
 shutdown /r /t 0
 del "%~f0"
 
+
+
+##############################################################################################################################################
+
+
+
+@echo off
+setlocal EnableDelayedExpansion
+
+timeout /t 15 /nobreak
+
+REM Get FIRST enabled Ethernet interface by Index
+for /f "skip=1 tokens=1,*" %%A in (
+  'wmic nic where "NetEnabled=true AND AdapterTypeID=0" get Index^,NetConnectionID ^| findstr /R "^[0-9]"'
+) do (
+    set IFACE_NAME=%%B
+    goto FOUND
+)
+
+:FOUND
+echo Using interface: "!IFACE_NAME!"
+
+netsh interface ip set address name="!IFACE_NAME!" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="!IFACE_NAME!" addr=135.21.13.15 index=1
+
+wmic computersystem where name="%computername%" call rename "rd2wa601wtds01"
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+shutdown /r /t 0
+del "%~f0"
