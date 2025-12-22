@@ -298,3 +298,44 @@ netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=
 powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
 shutdown /r /t 0
 del "%~f0"
+
+
+
+###############################################################################################################################################
+
+
+@echo off
+setlocal EnableDelayedExpansion
+
+REM Wait for NIC
+timeout /t 15 /nobreak
+
+REM Get active Ethernet interface name
+for /f "skip=1 tokens=*" %%I in (
+  'wmic nic where "NetEnabled=true AND AdapterTypeID=0" get NetConnectionID'
+) do (
+    set IFACE_NAME=%%I
+    goto FOUND
+)
+
+:FOUND
+echo Using interface: !IFACE_NAME!
+
+REM Set IP and DNS
+netsh interface ip set address name="!IFACE_NAME!" static 32.123.205.165 255.255.255.224 32.123.205.161
+netsh interface ip add dns name="!IFACE_NAME!" addr=135.21.13.15 index=1
+
+REM Rename computer
+wmic computersystem where name="%computername%" call rename "rd2wa601wtds01"
+
+REM Enable firewall
+netsh advfirewall firewall set rule group="File and Printer Sharing" new enable=Yes
+
+REM Initialize disks
+powershell -ExecutionPolicy Bypass -File C:\init_disks.ps1
+
+REM Reboot
+shutdown /r /t 0
+
+REM Self delete
+del "%~f0"
