@@ -232,3 +232,72 @@ echo
 echo "====================================================="
 echo "VDISK creation completed successfully"
 echo "====================================================="
+
+
+
+
+#!/bin/bash
+set -euo pipefail
+
+CTRL_ID="RAID.Slot.6-1"
+VD_NAME="DATA"
+RAID_LEVEL="r6"
+
+echo "====================================================="
+echo "Creating RAID-6 VDISK on $CTRL_ID"
+echo "Rule: Exclude FIRST 4 PDISKs returned by racadm"
+echo "Host: $(hostname)"
+echo "Time: $(date)"
+echo "====================================================="
+
+# STEP 1: Get all PDISKs exactly as racadm returns them
+mapfile -t ALL_PDISKS < <(
+  /bin/racadm storage get pdisks \
+  | grep "^Disk.Bay" \
+  | grep "$CTRL_ID"
+)
+
+TOTAL="${#ALL_PDISKS[@]}"
+
+if (( TOTAL <= 4 )); then
+    echo "ERROR: Not enough PDISKs to exclude first 4 (found $TOTAL)"
+    exit 1
+fi
+
+# STEP 2: Exclude FIRST 4 disks
+EXCLUDED_PDISKS=( "${ALL_PDISKS[@]:0:4}" )
+DATA_PDISKS=( "${ALL_PDISKS[@]:4}" )
+
+if (( ${#DATA_PDISKS[@]} < 6 )); then
+    echo "ERROR: RAID-6 requires at least 6 disks, found ${#DATA_PDISKS[@]}"
+    exit 1
+fi
+
+PDKEY_CSV=$(IFS=,; echo "${DATA_PDISKS[*]}")
+
+echo
+echo "Excluded PDISKs:"
+printf '  %s\n' "${EXCLUDED_PDISKS[@]}"
+
+echo
+echo "Using DATA PDISKs:"
+printf '  %s\n' "${DATA_PDISKS[@]}"
+
+# STEP 3: Create VDISK
+echo
+echo "Creating VDISK '$VD_NAME'..."
+
+ /bin/racadm storage createvd:${CTRL_ID} \
+   -rl "$RAID_LEVEL" \
+   -wp wb \
+   -rp ra \
+   -name "$VD_NAME" \
+   -pdkey:"${PDKEY_CSV}"
+
+# STEP 4: Submit job
+/bin/racadm jobqueue create "$CTRL_ID" --realtime
+
+echo
+echo "RAID creation job submitted successfully."
+echo "====================================================="
+
