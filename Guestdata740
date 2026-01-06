@@ -146,3 +146,89 @@ fi
 echo
 echo "=== TEST COMPLETE (no changes made) ==="
 
+
+
+
+
+#!/bin/bash
+set -euo pipefail
+
+### USER CONFIG ###
+CTRL_ID="RAID.Slot.6-1"
+VD_NAME="DATA"
+RAID_LEVEL="r6"
+
+echo "====================================================="
+echo "Creating RAID-${RAID_LEVEL} VDISK on $CTRL_ID"
+echo "Rule: Exclude FIRST 4 PDISKs, use the rest"
+echo "Host: $(hostname)"
+echo "Time: $(date)"
+echo "====================================================="
+
+### STEP 1: Get all PDISKs in racadm order ###
+mapfile -t ALL_PDISKS < <(
+  /bin/racadm storage get pdisks \
+  | awk -v ctrl="$CTRL_ID" '
+    /Disk.Bay/ && $0 ~ ctrl {
+      split($1,a,"=");
+      print a[2]
+    }'
+)
+
+TOTAL="${#ALL_PDISKS[@]}"
+
+if (( TOTAL <= 4 )); then
+    echo "ERROR: Not enough PDISKs to exclude first 4 (found $TOTAL)"
+    exit 1
+fi
+
+### STEP 2: Exclude FIRST 4 PDISKs ###
+DATA_PDISKS=( "${ALL_PDISKS[@]:4}" )
+
+if (( ${#DATA_PDISKS[@]} < 6 )); then
+    echo "ERROR: RAID-6 requires at least 6 disks, found ${#DATA_PDISKS[@]}"
+    exit 1
+fi
+
+PDKEY_CSV=$(IFS=,; echo "${DATA_PDISKS[*]}")
+
+echo
+echo "Excluded PDISKs:"
+printf '  %s\n' "${ALL_PDISKS[@]:0:4}"
+
+echo
+echo "Using DATA PDISKs:"
+printf '  %s\n' "${DATA_PDISKS[@]}"
+
+### STEP 3: Create VDISK ###
+echo
+echo "Creating VDISK '$VD_NAME'..."
+
+/bin/racadm storage createvd:${CTRL_ID} \
+  -rl "$RAID_LEVEL" \
+  -wp wb \
+  -rp ra \
+  -name "$VD_NAME" \
+  -pdkey:"${PDKEY_CSV}"
+
+### STEP 4: Create job and wait ###
+echo "Submitting job to controller..."
+/bin/racadm jobqueue create "$CTRL_ID" --realtime
+
+echo "Waiting for RAID creation to complete..."
+sleep 300   # Safe default; can be replaced with polling
+
+### STEP 5: Verify VDISK ###
+echo
+echo "Verifying VDISK creation..."
+if /bin/racadm storage get vdisks | grep -qw "$VD_NAME"; then
+    echo "SUCCESS: VDISK '$VD_NAME' created successfully."
+else
+    echo "ERROR: VDISK '$VD_NAME' not found."
+    exit 1
+fi
+
+echo
+echo "====================================================="
+echo "VDISK creation completed successfully"
+echo "====================================================="
