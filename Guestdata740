@@ -80,3 +80,69 @@ Disk.Bay.20:Enclosure.Internal.0-1:RAID.Slot.6-1
 Disk.Bay.21:Enclosure.Internal.0-1:RAID.Slot.6-1
 Disk.Bay.22:Enclosure.Internal.0-1:RAID.Slot.6-1
 Disk.Bay.23:Enclosure.Internal.0-1:RAID.Slot.6-1
+
+
+
+#!/bin/bash
+set -euo pipefail
+
+CTRL_ID="RAID.Slot.6-1"
+
+echo "=== TEST: Exclude first 4 PDISKs and show remaining ==="
+echo "Controller: $CTRL_ID"
+echo
+
+# Get all PDISKs in racadm order
+mapfile -t ALL_PDISKS < <(
+  /bin/racadm storage get pdisks \
+  | awk -v ctrl="$CTRL_ID" '
+    /Disk.Bay/ && $0 ~ ctrl {
+      split($1,a,"=");
+      print a[2]
+    }'
+)
+
+TOTAL="${#ALL_PDISKS[@]}"
+
+if (( TOTAL == 0 )); then
+    echo "ERROR: No PDISKs found for controller $CTRL_ID"
+    exit 1
+fi
+
+echo "Total PDISKs detected: $TOTAL"
+echo
+
+echo "All PDISKs (racadm order):"
+printf '  %s\n' "${ALL_PDISKS[@]}"
+echo
+
+if (( TOTAL <= 4 )); then
+    echo "ERROR: Not enough PDISKs to exclude first 4"
+    exit 1
+fi
+
+# Exclude first 4 PDISKs
+EXCLUDED_PDISKS=( "${ALL_PDISKS[@]:0:4}" )
+DATA_PDISKS=( "${ALL_PDISKS[@]:4}" )
+
+echo "Excluded PDISKs (first 4):"
+printf '  %s\n' "${EXCLUDED_PDISKS[@]}"
+echo
+
+echo "Remaining PDISKs (would be used for VD):"
+printf '  %s\n' "${DATA_PDISKS[@]}"
+echo
+
+echo "Remaining disk count: ${#DATA_PDISKS[@]}"
+
+if (( ${#DATA_PDISKS[@]} < 6 )); then
+    echo
+    echo "WARNING: RAID-6 requires at least 6 disks."
+else
+    echo
+    echo "OK: RAID-6 requirement satisfied."
+fi
+
+echo
+echo "=== TEST COMPLETE (no changes made) ==="
+
