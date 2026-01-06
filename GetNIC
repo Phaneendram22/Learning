@@ -105,3 +105,4 @@ printf "%-10s %-20s\n" "NIC_PORT" "MAC_ADDRESS"
 printf "%-10s %-20s\n" "--------" "------------------"
 printf "%-10s %-20s\n" "$NIC_PORT" "$MAC"
 
+MAC=$(echo "$OUTPUT" | sed -nE 's/.*=([0-9A-Fa-f:]{17}).*/\1/p' | head -n1)
