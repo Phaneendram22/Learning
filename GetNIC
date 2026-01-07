@@ -106,3 +106,51 @@ printf "%-10s %-20s\n" "--------" "------------------"
 printf "%-10s %-20s\n" "$NIC_PORT" "$MAC"
 
 MAC=$(echo "$OUTPUT" | sed -nE 's/.*=([0-9A-Fa-f:]{17}).*/\1/p' | head -n1)
+
+
+
+#!/bin/bash
+
+JUMP_USER="sh3237"
+JUMP_HOST="zlsa9091arpy01ipr001.dcu.att.net"
+TARGET_USER="root"
+
+if [ -z "$1" ] || [ -z "$2" ]; then
+  echo "Usage: $0 <TARGET_HOST> <NIC_PORT>"
+  echo "Example: ./check_connection.sh host P3P1"
+  exit 1
+fi
+
+TARGET_HOST="$1"
+NIC_PORT="$2"
+
+case "$NIC_PORT" in
+  P3P1) REMOTE_COMMAND="racadm switchconnection view NIC.Slot.3-1-1" ;;
+  P3P2) REMOTE_COMMAND="racadm switchconnection view NIC.Slot.3-2-1" ;;
+  P6P1) REMOTE_COMMAND="racadm switchconnection view NIC.Slot.6-1-1" ;;
+  P6P2) REMOTE_COMMAND="racadm switchconnection view NIC.Slot.6-2-1" ;;
+  *)
+    echo "Invalid NIC_PORT. Use: P3P1, P3P2, P6P1, P6P2"
+    exit 1
+    ;;
+esac
+
+# Run remote command
+OUTPUT=$(ssh -J "${JUMP_USER}@${JUMP_HOST}" \
+  "${TARGET_USER}@${TARGET_HOST}" \
+  "${REMOTE_COMMAND}")
+
+# DEBUG: show raw output (keep formatting)
+echo "$OUTPUT"
+
+# ✅ ROBUST MAC extraction (this is the key fix)
+MAC=$(echo "$OUTPUT" | sed -nE 's/.*=([0-9A-Fa-f:]{17}).*/\1/p' | head -n1)
+
+# DEBUG: prove variable is set
+echo "DEBUG: MAC=[$MAC]"
+
+# Display as a table
+printf "%-10s %-20s\n" "NIC_PORT" "MAC_ADDRESS"
+printf "%-10s %-20s\n" "--------" "------------------"
+printf "%-10s %-20s\n" "$NIC_PORT" "$MAC"
+
