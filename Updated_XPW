@@ -36,3 +36,18 @@ EOF
         echo "#"
         echo "#_________________________________________________________________________"
 }
+
+
+
+
+tee /etc/chrony/chrony.conf > /dev/null pool 199.37.146.89 iburst
+pool 199.37.146.90 iburst
+pool 199.37.145.131 iburst
+driftfile /var/lib/chrony/drift
+# Allow the system clock to be stepped in the first three updates
+# if its offset is larger than 1 second.
+makestep 1.0 3
+
+# Enable kernel synchronization of the real-time clock (RTC).
+rtcsync
+EOF
