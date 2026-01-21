@@ -1,0 +1,38 @@
+function Installing_XPW ()
+{
+        echo "#_________________________________________________________________________"
+        echo "#"
+        echo "# Task: Started installing xpw for Host:$HOSTNAME at: $(date)"
+        echo "#"
+        echo "#_________________________________________________________________________"
+
+        cd /tmp/ || exit 1
+
+        echo "Downloading the latest version of XPW"
+        wget --no-proxy -O /tmp/xpw_add_id_current.ksh \
+            http://$ARCADIAN_REPO_IP/Arcadian/common/mirrors.it.att.com/xpw_add_id_current.ksh
+
+        chmod +x /tmp/xpw_add_id_current.ksh
+
+        echo "Initiating XPW install"
+        /tmp/xpw_add_id_current.ksh
+
+        echo "Backing up /etc/pam.d/common-password"
+        cp /etc/pam.d/common-password \
+           /etc/pam.d/common-password.bak.$(date +%F_%T)
+
+        echo "Updating /etc/pam.d/common-password file"
+
+        cat <<'EOF' > /etc/pam.d/common-password
+password        requisite                       pam_pwquality.so retry=3 minlen=10 dcredit=-1 ocredit=-1
+password        [success=1 default=ignore]      pam_unix.so obscure use_authtok try_first_pass yescrypt remember=4
+password        requisite                       pam_deny.so
+password        required                        pam_permit.so
+EOF
+
+        echo "#_________________________________________________________________________"
+        echo "#"
+        echo "# Task: Completed installing xpw for Host:$HOSTNAME at: $(date)"
+        echo "#"
+        echo "#_________________________________________________________________________"
+}
