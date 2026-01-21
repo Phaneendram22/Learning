@@ -51,3 +51,56 @@ makestep 1.0 3
 # Enable kernel synchronization of the real-time clock (RTC).
 rtcsync
 EOF
+
+
+
+function Configuring_CHRONY ()
+{
+        echo "#_________________________________________________________________________"
+        echo "#"
+        echo "# Task: Started configuring Chrony for Host:$HOSTNAME at: $(date)"
+        echo "#"
+        echo "#_________________________________________________________________________"
+
+        echo "Disabling systemd-timesyncd"
+        systemctl disable --now systemd-timesyncd.service 2>/dev/null
+
+        echo "Setting proxy variables"
+        export http_proxy="http://proxy.dcu.att.net:443/"
+        export https_proxy="http://proxy.dcu.att.net:443/"
+
+        echo "Downloading and running chrony setup script"
+        wget -O /tmp/setup_chrony \
+            http://mirrors.it.att.com/pub/custom/SD/nasCDs/install/REDHAT/chrony/setup_chrony \
+            && chmod +x /tmp/setup_chrony \
+            && /tmp/setup_chrony
+
+        echo "Backing up /etc/chrony/chrony.conf"
+        cp /etc/chrony/chrony.conf \
+           /etc/chrony/chrony.conf.bak.$(date +%F_%T) 2>/dev/null
+
+        echo "Updating /etc/chrony/chrony.conf with approved configuration"
+
+        cat <<'EOF' > /etc/chrony/chrony.conf
+pool 199.37.146.89 iburst
+pool 199.37.146.90 iburst
+pool 199.37.145.131 iburst
+driftfile /var/lib/chrony/drift
+
+# Allow the system clock to be stepped in the first three updates
+# if its offset is larger than 1 second.
+makestep 1.0 3
+
+# Enable kernel synchronization of the real-time clock (RTC).
+rtcsync
+EOF
+
+        echo "Enabling and restarting chrony"
+        systemctl enable --now chrony
+
+        echo "#_________________________________________________________________________"
+        echo "#"
+        echo "# Task: Completed configuring Chrony for Host:$HOSTNAME at: $(date)"
+        echo "#"
+        echo "#_________________________________________________________________________"
+}
