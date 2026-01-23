@@ -63,3 +63,77 @@ iface bond0.1001 inet manual
 auto br1001
 iface br1001 inet manual
         bridge_ports bond0.1001
+
+
+
+network:
+  version: 2
+  renderer: networkd
+
+  ethernets:
+    eno3:
+      addresses:
+        - 32.111.119.37/28
+
+    enp94s0f0:
+      mtu: 9100
+      dhcp4: no
+
+    enp94s0f1:
+      dhcp4: no
+
+    enp216s0f0:
+      mtu: 9100
+      dhcp4: no
+
+    enp216s0f1:
+      dhcp4: no
+
+  bonds:
+    bond0:
+      interfaces:
+        - enp94s0f1
+        - enp216s0f1
+      parameters:
+        mode: active-backup
+        mii-monitor-interval: 100
+      dhcp4: no
+
+  vlans:
+    bond0.11:
+      id: 11
+      link: bond0
+      addresses:
+        - 32.111.119.21/28
+      routes:
+        - to: default
+          via: 32.111.119.17
+
+    bond0.12:
+      id: 12
+      link: bond0
+
+    bond0.15:
+      id: 15
+      link: bond0
+
+    bond0.1001:
+      id: 1001
+      link: bond0
+
+  bridges:
+    br1:
+      interfaces:
+        - bond0.12
+      dhcp4: no
+
+    br15:
+      interfaces:
+        - bond0.15
+      dhcp4: no
+
+    br1001:
+      interfaces:
+        - bond0.1001
+      dhcp4: no
+
