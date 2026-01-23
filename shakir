@@ -1,0 +1,65 @@
+iface lo inet loopback
+
+auto eno3
+iface eno3 inet static
+        address 32.111.119.37
+        netmask 255.255.255.240
+
+auto enp94s0f0
+iface enp94s0f0 inet manual
+        mtu 9100
+
+auto enp94s0f1
+iface enp94s0f1 inet manual
+        bond-master bond0
+
+auto enp216s0f0
+iface enp216s0f0 inet manual
+        mtu 9100
+
+auto enp216s0f1
+iface enp216s0f1 inet manual
+        bond-master bond0
+
+auto bond0
+iface bond0 inet manual
+        bond-mode active-backup
+        bond-miimon 100
+        bond-slaves enp94s0f1 enp216s0f1
+
+#Hypervisor OAM
+auto bond0.11
+iface bond0.11 inet manual
+        vlan-raw-device bond0
+
+iface bond0.11 inet static
+        address 32.111.119.21
+        netmask 255.255.255.240
+        gateway 32.111.119.17
+
+#vRR Guest OAM
+auto bond0.12
+iface bond0.12 inet manual
+        vlan-raw-device bond0
+
+auto br1
+iface br1 inet manual
+        bridge_ports bond0.12
+
+#vLRSI Guest OAM
+auto bond0.15
+iface bond0.15 inet manual
+        vlan-raw-device bond0
+
+auto br15
+iface br15 inet manual
+        bridge_ports bond0.15
+
+#vLRSI App OAM
+auto bond0.1001
+iface bond0.1001 inet manual
+        vlan-raw-device bond0
+
+auto br1001
+iface br1001 inet manual
+        bridge_ports bond0.1001
