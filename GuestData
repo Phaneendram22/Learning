@@ -190,3 +190,44 @@ echo "# Task: Completed GuestData FS setup using NVMe"
 echo "# Time: $(date)"
 echo "#_________________________________________________________________________"
 
+
+
+
+#!/bin/bash
+set -e
+
+MD_DEV="/dev/md0"
+MOUNT_POINT="/guestdata"
+FS_TYPE="ext4"
+
+# NVMe disks corresponding to Disk.Bay.16–23
+DISKS="/dev/nvme0n1 /dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1 \
+       /dev/nvme4n1 /dev/nvme5n1 /dev/nvme6n1 /dev/nvme7n1"
+
+echo "Creating RAID-6 array using NVMe disks:"
+echo "$DISKS"
+
+# Create RAID-6
+mdadm --create "$MD_DEV" \
+      --level=6 \
+      --raid-devices=8 \
+      $DISKS
+
+# Wait for device
+sleep 5
+
+echo "Formatting $MD_DEV with $FS_TYPE"
+mkfs.$FS_TYPE "$MD_DEV"
+
+echo "Creating mount point $MOUNT_POINT"
+mkdir -p "$MOUNT_POINT"
+
+# Add to fstab using UUID (safe)
+UUID=$(blkid -s UUID -o value "$MD_DEV")
+echo "UUID=$UUID $MOUNT_POINT $FS_TYPE defaults,nofail 0 2" >> /etc/fstab
+
+echo "Mounting filesystem"
+mount "$MOUNT_POINT"
+
+echo "Done."
+df -h "$MOUNT_POINT"
