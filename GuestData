@@ -82,3 +82,111 @@ function Setup_Additional_FS_GuestData() {
     echo "# Task: Completed GuestData FS setup for Host: $HOSTNAME at: $(date)"
     echo "#_________________________________________________________________________"
 }
+
+
+
+
+#######################For NVME#######################################
+
+
+#!/bin/bash
+set -e
+
+echo "#_________________________________________________________________________"
+echo "# Task: Started GuestData FS setup using NVMe disks"
+echo "# Host: $(hostname)"
+echo "# Time: $(date)"
+echo "#_________________________________________________________________________"
+
+# =========================
+# CONFIGURATION
+# =========================
+
+# NVMe disk to use (VERIFY BEFORE RUNNING)
+NVME_DISK="/dev/nvme0n1"     # CHANGE if needed
+PART_NUM="1"
+DEVICE_PATH="${NVME_DISK}p${PART_NUM}"
+
+FS_TYPE="ext4"
+MOUNT_POINT="/guestdata"
+
+# Use UUID in fstab (recommended)
+USE_UUID=true
+
+# =========================
+# VALIDATION
+# =========================
+
+if [[ $EUID -ne 0 ]]; then
+    echo "ERROR: This script must be run as root."
+    exit 1
+fi
+
+if [[ ! -b "$NVME_DISK" ]]; then
+    echo "ERROR: NVMe disk $NVME_DISK not found."
+    lsblk
+    exit 1
+fi
+
+echo "Using NVMe disk: $NVME_DISK"
+
+# =========================
+# PARTITION SETUP
+# =========================
+
+if lsblk "$NVME_DISK" | grep -q "${NVME_DISK##*/}p${PART_NUM}"; then
+    echo "Partition $DEVICE_PATH already exists."
+else
+    echo "Creating GPT label and partition on $NVME_DISK..."
+    parted -s "$NVME_DISK" mklabel gpt
+    parted -s "$NVME_DISK" mkpart primary 0% 100%
+    sleep 5
+
+    echo "Formatting $DEVICE_PATH as $FS_TYPE..."
+    mkfs.$FS_TYPE -F "$DEVICE_PATH"
+fi
+
+# =========================
+# FILESYSTEM & MOUNT
+# =========================
+
+mkdir -p "$MOUNT_POINT"
+
+if $USE_UUID; then
+    UUID=$(blkid -s UUID -o value "$DEVICE_PATH")
+    if [[ -z "$UUID" ]]; then
+        echo "ERROR: Unable to fetch UUID for $DEVICE_PATH"
+        exit 1
+    fi
+    FSTAB_ENTRY="UUID=$UUID $MOUNT_POINT $FS_TYPE defaults,nofail 0 2"
+else
+    FSTAB_ENTRY="$DEVICE_PATH $MOUNT_POINT $FS_TYPE defaults,nofail 0 2"
+fi
+
+if ! grep -q "$MOUNT_POINT" /etc/fstab; then
+    echo "$FSTAB_ENTRY" >> /etc/fstab
+    echo "Added fstab entry:"
+    echo "  $FSTAB_ENTRY"
+else
+    echo "fstab entry already exists for $MOUNT_POINT"
+fi
+
+if ! mountpoint -q "$MOUNT_POINT"; then
+    mount "$MOUNT_POINT"
+    echo "$MOUNT_POINT mounted successfully."
+else
+    echo "$MOUNT_POINT is already mounted."
+fi
+
+# =========================
+# FINAL STATUS
+# =========================
+
+df -h "$MOUNT_POINT"
+lsblk "$NVME_DISK"
+
+echo "#_________________________________________________________________________"
+echo "# Task: Completed GuestData FS setup using NVMe"
+echo "# Time: $(date)"
+echo "#_________________________________________________________________________"
+
