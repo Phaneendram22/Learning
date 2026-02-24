@@ -1,0 +1,84 @@
+function Setup_Additional_FS_GuestData() {
+    echo "#_________________________________________________________________________"
+    echo "# Task: Started creating additional RAID for the Host: $HOSTNAME at: $(date)"
+    echo "#_________________________________________________________________________"
+
+    
+    CTRL_ID="RAID.Slot.6-1"
+    TARGET_VDISK="Disk.Virtual.2:${CTRL_ID}"
+
+    NUMBER_OF_DISKS=$(/bin/racadm storage get pdisks | grep -c "Disk.Bay")
+    if [[ -z "$NUMBER_OF_DISKS" || "$NUMBER_OF_DISKS" -lt 8 ]]; then
+        echo "Failure: Need at least 8 total disks (found: ${NUMBER_OF_DISKS:-0}). Skipping..."
+        return 0
+    fi
+
+   
+    if /bin/racadm storage get vdisks | grep -qw "$TARGET_VDISK"; then
+        echo "Virtual disk already exists: $TARGET_VDISK. Proceeding to filesystem setup."
+    else
+        echo "Creating RAID-6 for VM DATA using available bays from 4 upwards..."
+
+        pdkeys=()
+        for BAY in $(seq 4 $((NUMBER_OF_DISKS - 1))); do
+            pdkeys+=( "Disk.Bay.${BAY}:Enclosure.Internal.0-1:${CTRL_ID}" )
+        done
+        PDKEY_CSV=$(IFS=,; echo "${pdkeys[*]}")
+
+        /bin/racadm storage createvd:${CTRL_ID} \
+            -rl r6 -wp wb -rp ra -name DATA \
+            -pdkey:"${PDKEY_CSV}"
+
+        if [[ $? -ne 0 ]]; then
+            echo "RAID creation failed. Exiting."
+            return 1
+        fi
+
+        /bin/racadm jobqueue create "${CTRL_ID}" --realtime
+        if [[ $? -ne 0 ]]; then
+            echo "Failed to submit RAID jobqueue. Exiting."
+            return 1
+        fi
+
+        echo "Waiting 300s for controller to finish applying configuration..."
+        sleep 300
+    fi
+
+    echo "Setting up filesystem..."
+    DISK="/dev/sdc"
+    PART_NUM="1"
+    DEVICE_PATH="${DISK}${PART_NUM}"
+    FS_TYPE="ext4"
+    MOUNT_POINT="/guestdata"
+    FSTAB_ENTRY="$DEVICE_PATH $MOUNT_POINT $FS_TYPE defaults 0 2"
+
+    if parted -s "$DISK" print | grep -q "^ $PART_NUM"; then
+        echo "Partition $DEVICE_PATH already exists."
+    else
+        echo "Creating partition $DEVICE_PATH..."
+        parted -s "$DISK" mklabel gpt
+        parted -s "$DISK" mkpart primary 0% 100%
+        sleep 5
+        echo "Formatting partition $DEVICE_PATH as $FS_TYPE..."
+        mkfs.$FS_TYPE "$DEVICE_PATH"
+    fi
+
+    if ! grep -q "$DEVICE_PATH" /etc/fstab; then
+        echo "$FSTAB_ENTRY" >> /etc/fstab
+        echo "Entry added to /etc/fstab."
+    else
+        echo "Entry already exists in /etc/fstab."
+    fi
+
+    if ! mountpoint -q "$MOUNT_POINT"; then
+        mkdir -p "$MOUNT_POINT"
+        mount "$DEVICE_PATH" "$MOUNT_POINT"
+        echo "$DEVICE_PATH mounted on $MOUNT_POINT."
+    else
+        echo "$MOUNT_POINT is already mounted."
+    fi
+
+    echo "#_________________________________________________________________________"
+    echo "# Task: Completed GuestData FS setup for Host: $HOSTNAME at: $(date)"
+    echo "#_________________________________________________________________________"
+}
